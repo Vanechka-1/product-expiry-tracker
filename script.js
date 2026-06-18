@@ -1,3 +1,9 @@
+// Initialize EmailJS
+emailjs.init('bwvHD9Xt6zVev4pC_');
+
+const EMAILJS_SERVICE_ID = 'service_s3s7yih';
+const EMAILJS_TEMPLATE_ID = 'template_fg9gv7d';
+
 // Initialize language
 let currentLanguage = localStorage.getItem('language') || 'uk';
 
@@ -163,8 +169,12 @@ productForm.addEventListener('submit', (e) => {
     products.push(newProduct);
     saveProducts(products);
 
-    // Send notification email (simplified - in production use a backend service)
-    sendNotificationEmail(newProduct.email, `New product added: ${newProduct.name}`, `Product "${newProduct.name}" will expire on ${formatDate(newProduct.expiryDate)}`);
+    // Send notification email
+    sendNotificationEmail(
+        newProduct.email,
+        `New product added: ${newProduct.name}`,
+        `Product "${newProduct.name}" will expire on ${formatDate(newProduct.expiryDate)}`
+    );
 
     alert(getTranslation('successMessage'));
     productForm.reset();
@@ -204,55 +214,70 @@ function updateLanguage() {
     renderProducts();
 }
 
-// Send email notification (using FormSubmit service)
+// Send email notification using EmailJS
 function sendNotificationEmail(email, subject, message) {
-    // This is a simplified version. For production, use a backend service like:
-    // - EmailJS
-    // - SendGrid
-    // - AWS SES
-    // - Or your own backend
-    
-    console.log(`Email notification would be sent to ${email}`);
-    console.log(`Subject: ${subject}`);
-    console.log(`Message: ${message}`);
+    emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+        to_email: email,
+        subject: subject,
+        message: message
+    }).then(
+        function(response) {
+            console.log('Email sent successfully!', response.status, response.text);
+        },
+        function(error) {
+            console.log('Failed to send email:', error);
+        }
+    );
 }
 
-// Check for expired products periodically
+// Check for expired products periodically (every hour)
 function checkExpiredProducts() {
     const products = loadProducts();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    products.forEach(product => {
+    const notifiedProducts = JSON.parse(localStorage.getItem('notifiedProducts') || '[]');
+
+    products.forEach((product, index) => {
         const expiryDate = new Date(product.expiryDate);
         expiryDate.setHours(0, 0, 0, 0);
         const daysLeft = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
 
-        // Send notification if product expired or expiring in 1 day
-        if (daysLeft <= 1 && daysLeft > -1) {
+        const productKey = `${product.name}-${product.expiryDate}`;
+
+        // Send notification if product expired or expiring in 1 day (and not already notified)
+        if ((daysLeft <= 1 && daysLeft > -7) && !notifiedProducts.includes(productKey)) {
             sendExpiryNotification(product);
-        } else if (daysLeft < 0) {
-            sendExpiryNotification(product);
+            notifiedProducts.push(productKey);
+            localStorage.setItem('notifiedProducts', JSON.stringify(notifiedProducts));
         }
     });
 }
 
 function sendExpiryNotification(product) {
-    const subject = `⚠️ Product Expiry Alert: ${product.name}`;
     const daysLeft = getDaysUntilExpiry(product.expiryDate);
+    let subject = '';
     let message = '';
 
     if (daysLeft < 0) {
-        message = `The product "${product.name}" has expired ${Math.abs(daysLeft)} days ago on ${formatDate(product.expiryDate)}. Please dispose of it.`;
+        subject = `⚠️ EXPIRED: ${product.name}`;
+        message = `The product "${product.name}" has EXPIRED ${Math.abs(daysLeft)} days ago on ${formatDate(product.expiryDate)}.\n\nPlease dispose of it immediately!`;
+    } else if (daysLeft === 0) {
+        subject = `⚠️ EXPIRES TODAY: ${product.name}`;
+        message = `The product "${product.name}" EXPIRES TODAY (${formatDate(product.expiryDate)})!\n\nPlease check and use it as soon as possible!`;
     } else {
-        message = `The product "${product.name}" will expire on ${formatDate(product.expiryDate)}. Please check it!`;
+        subject = `⏰ EXPIRING SOON: ${product.name}`;
+        message = `The product "${product.name}" will expire in ${daysLeft} day(s) on ${formatDate(product.expiryDate)}.\n\nPlease check and use it before it expires!`;
     }
 
     sendNotificationEmail(product.email, subject, message);
 }
 
-// Check every hour
+// Check for expired products every hour
 setInterval(checkExpiredProducts, 60 * 60 * 1000);
+
+// Also check on page load
+checkExpiredProducts();
 
 // Initial render
 updateLanguage();
