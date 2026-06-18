@@ -1,5 +1,5 @@
 // API URL - змініть на вашу Render URL коли розгорнете
-const API_URL = 'https://product-expiry-tracker-y411.onrender.com'; // Для розробки
+const API_URL = 'http://localhost:5000'; // Для розробки
 // const API_URL = 'https://your-render-url.onrender.com'; // Для production
 
 let currentUser = null;
