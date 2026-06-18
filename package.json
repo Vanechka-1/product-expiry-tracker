@@ -1,0 +1,12 @@
+{
+  "name": "product-expiry-tracker",
+  "version": "1.0.0",
+  "description": "A web app to track product expiry dates with email notifications",
+  "main": "index.html",
+  "scripts": {
+    "start": "python -m http.server 8000"
+  },
+  "keywords": ["product", "expiry", "tracker", "notification"],
+  "author": "Your Name",
+  "license": "MIT"
+}
