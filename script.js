@@ -1,284 +1,380 @@
-// Initialize EmailJS
-emailjs.init('bwvHD9Xt6zVev4pC_');
+// API URL - змініть на вашу Render URL коли розгорнете
+const API_URL = 'http://localhost:5000'; // Для розробки
+// const API_URL = 'https://your-render-url.onrender.com'; // Для production
 
-const EMAILJS_SERVICE_ID = 'service_s3s7yih';
-const EMAILJS_TEMPLATE_ID = 'template_fg9gv7d';
-
-// Initialize language
+let currentUser = null;
+let authToken = localStorage.getItem('authToken');
 let currentLanguage = localStorage.getItem('language') || 'uk';
 
-// DOM Elements
-const productForm = document.getElementById('productForm');
-const productNameInput = document.getElementById('productName');
-const expiryDateInput = document.getElementById('expiryDate');
-const emailInput = document.getElementById('emailNotification');
-const productsList = document.getElementById('productsList');
-const langUKBtn = document.getElementById('langUK');
-const langDEBtn = document.getElementById('langDE');
-const expiredSection = document.getElementById('expiredSection');
-const expiredList = document.getElementById('expiredList');
-
-// Load products from localStorage
-function loadProducts() {
-    const stored = localStorage.getItem('products');
-    return stored ? JSON.parse(stored) : [];
+if (authToken) {
+  currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  showMainApp();
+} else {
+  showLoginForm();
 }
 
-// Save products to localStorage
-function saveProducts(products) {
-    localStorage.setItem('products', JSON.stringify(products));
+// ============ AUTHENTICATION ============
+
+function showLoginForm() {
+  document.body.innerHTML = `
+    <div class="container">
+      <header>
+        <h1 id="title">Product Expiry Tracker</h1>
+        <div class="language-switcher">
+          <button id="langUK" class="lang-btn active">🇺🇦 Українська</button>
+          <button id="langDE" class="lang-btn">🇩🇪 Deutsch</button>
+        </div>
+      </header>
+      <main style="display: flex; justify-content: center; align-items: center; min-height: 70vh;">
+        <div class="auth-form" style="background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 400px; width: 100%;">
+          <h2 id="loginTitle" style="text-align: center; margin-bottom: 30px;">Register / Login</h2>
+          <form id="authForm">
+            <div class="form-group">
+              <label for="email" id="emailLabel">Email:</label>
+              <input type="email" id="email" placeholder="your@email.com" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px;">
+            </div>
+            <button type="submit" id="loginBtn" style="width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 20px;">Register / Login</button>
+          </form>
+          <p id="loginHint" style="text-align: center; margin-top: 15px; color: #666; font-size: 14px;">Just enter your email, no password needed!</p>
+        </div>
+      </main>
+    </div>
+  `;
+
+  document.getElementById('authForm').addEventListener('submit', handleLogin);
+  setupLanguageSwitcher();
 }
 
-// Format date for display
-function formatDate(dateString) {
-    const date = new Date(dateString);
-    return date.toLocaleDateString(currentLanguage === 'uk' ? 'uk-UA' : 'de-DE');
+async function handleLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('email').value;
+
+  try {
+    const response = await fetch(`${API_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      authToken = data.token;
+      currentUser = data.user;
+      localStorage.setItem('authToken', authToken);
+      localStorage.setItem('user', JSON.stringify(currentUser));
+      showMainApp();
+    } else {
+      alert('❌ ' + (data.error || 'Error'));
+    }
+  } catch (err) {
+    alert('❌ Cannot connect to server. Make sure backend is running on ' + API_URL);
+    console.error(err);
+  }
 }
 
-// Calculate days until expiry
-function getDaysUntilExpiry(dateString) {
-    const expiryDate = new Date(dateString);
+function logout() {
+  authToken = null;
+  currentUser = null;
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('user');
+  showLoginForm();
+}
+
+// ============ MAIN APP ============
+
+function showMainApp() {
+  document.body.innerHTML = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Product Expiry Tracker</title>
+        <link rel="stylesheet" href="styles.css">
+    </head>
+    <body>
+        <div class="container">
+            <header>
+                <h1 id="title">Product Expiry Tracker</h1>
+                <div style="display: flex; gap: 15px; align-items: center;">
+                  <div class="language-switcher">
+                      <button id="langUK" class="lang-btn active">🇺🇦 Українська</button>
+                      <button id="langDE" class="lang-btn">🇩🇪 Deutsch</button>
+                  </div>
+                  <div style="text-align: right;">
+                    <p id="userEmail" style="margin: 0; font-size: 14px; color: #666;">${currentUser.email}</p>
+                    <button id="logoutBtn" style="padding: 5px 15px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 12px;">Logout</button>
+                  </div>
+                </div>
+            </header>
+
+            <main>
+                <!-- Add Product Form -->
+                <section class="form-section">
+                    <h2 id="addProductTitle">Add Product</h2>
+                    <form id="productForm">
+                        <div class="form-group">
+                            <label for="productName" id="productNameLabel">Product Name:</label>
+                            <input type="text" id="productName" placeholder="e.g., Milk" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="expiryDate" id="expiryDateLabel">Expiry Date:</label>
+                            <input type="date" id="expiryDate" required>
+                        </div>
+                        <button type="submit" id="addBtn">Add Product</button>
+                    </form>
+                </section>
+
+                <!-- Products List -->
+                <section class="products-section">
+                    <h2 id="productsListTitle">All Products</h2>
+                    <div id="productsList" class="products-list">
+                        <p id="noProductsMsg">No products added yet</p>
+                    </div>
+                </section>
+
+                <!-- Expired Products Alert -->
+                <section class="expired-section" id="expiredSection" style="display: none;">
+                    <h2 id="expiredTitle">Expired Products</h2>
+                    <div id="expiredList" class="expired-list"></div>
+                </section>
+            </main>
+
+            <footer>
+                <p id="footer">© 2024 Product Expiry Tracker. All rights reserved.</p>
+            </footer>
+        </div>
+
+        <script src="translations.js"></script>
+        <script src="script.js"></script>
+    </body>
+    </html>
+  `;
+
+  setupLanguageSwitcher();
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  document.getElementById('productForm').addEventListener('submit', addProduct);
+  loadProducts();
+  setInterval(loadProducts, 5000); // Refresh every 5 seconds
+}
+
+// ============ PRODUCTS ============
+
+async function addProduct(e) {
+  e.preventDefault();
+  const name = document.getElementById('productName').value;
+  const expiryDate = document.getElementById('expiryDate').value;
+
+  if (!name || !expiryDate) {
+    alert('❌ Please fill all fields');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/api/products`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({
+        name,
+        expiryDate,
+        email: currentUser.email
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      alert('✅ Product added! You will receive notifications when it expires.');
+      document.getElementById('productForm').reset();
+      loadProducts();
+    } else {
+      alert('❌ ' + (data.error || 'Error'));
+    }
+  } catch (err) {
+    alert('❌ Error adding product: ' + err.message);
+    console.error(err);
+  }
+}
+
+async function loadProducts() {
+  try {
+    const response = await fetch(`${API_URL}/api/products`, {
+      headers: {
+        'Authorization': `Bearer ${authToken}`
+      }
+    });
+
+    const products = await response.json();
+
+    const productsList = document.getElementById('productsList');
+    const expiredList = document.getElementById('expiredList');
+    const expiredSection = document.getElementById('expiredSection');
+
+    if (!products || products.length === 0) {
+      productsList.innerHTML = '<p id="noProductsMsg">No products added yet</p>';
+      expiredSection.style.display = 'none';
+      return;
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    expiryDate.setHours(0, 0, 0, 0);
-    const timeDifference = expiryDate - today;
-    return Math.ceil(timeDifference / (1000 * 60 * 60 * 24));
-}
 
-// Get status badge and class
-function getProductStatus(daysUntilExpiry) {
-    if (daysUntilExpiry < 0) {
-        return {
-            class: 'expired',
-            badge: 'expired',
-            text: `${getTranslation('statusExpired')} ${Math.abs(daysUntilExpiry)} ${getTranslation('daysLeft')}`
-        };
-    } else if (daysUntilExpiry <= 3) {
-        return {
-            class: 'expiring-soon',
-            badge: 'warning',
-            text: `${getTranslation('statusExpiring')} ${daysUntilExpiry} ${getTranslation('daysLeft')}`
-        };
-    } else {
-        return {
-            class: 'ok',
-            badge: 'ok',
-            text: `${getTranslation('statusOk')}`
-        };
-    }
-}
-
-// Render products
-function renderProducts() {
-    const products = loadProducts();
-    productsList.innerHTML = '';
-    
-    if (products.length === 0) {
-        productsList.innerHTML = `<p>${getTranslation('noProductsMsg')}</p>`;
-        expiredSection.style.display = 'none';
-        return;
-    }
-
+    let activeProducts = '';
+    let expiredProducts = '';
     let hasExpired = false;
 
-    products.forEach((product, index) => {
-        const daysLeft = getDaysUntilExpiry(product.expiryDate);
-        const status = getProductStatus(daysLeft);
+    products.forEach(product => {
+      const expiryDate = new Date(product.expiryDate);
+      expiryDate.setHours(0, 0, 0, 0);
 
-        if (daysLeft < 0) {
-            hasExpired = true;
-        }
+      const daysLeft = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+      const formattedDate = expiryDate.toLocaleDateString();
 
-        const card = document.createElement('div');
-        card.className = `product-card ${status.class}`;
-        card.innerHTML = `
-            <div class="product-name">${product.name}</div>
-            <span class="status-badge ${status.badge}">${status.text}</span>
-            <div class="product-info">
-                <span>📅 ${getTranslation('expiryDateLabel')}</span>
-                <span>${formatDate(product.expiryDate)}</span>
-            </div>
-            <div class="product-info">
-                <span>📧 ${getTranslation('emailLabel')}</span>
-                <span>${product.email}</span>
-            </div>
-            <div class="product-actions">
-                <button class="delete-btn" onclick="deleteProduct(${index})">${getTranslation('delete')}</button>
-            </div>
-        `;
-        productsList.appendChild(card);
+      const productHTML = `
+        <div class="product-item" style="display: flex; justify-content: space-between; align-items: center; padding: 15px; background: ${daysLeft < 0 ? '#ffebee' : daysLeft === 0 ? '#fff3e0' : '#f5f5f5'}; margin: 10px 0; border-radius: 8px; border-left: 4px solid ${daysLeft < 0 ? '#dc3545' : daysLeft === 0 ? '#ff9800' : '#28a745'};">
+          <div>
+            <h4 style="margin: 0; ${daysLeft < 0 ? 'color: #dc3545;' : ''}">${product.name}</h4>
+            <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">
+              ${daysLeft < 0 ? '❌ EXPIRED ' + Math.abs(daysLeft) + ' days ago' : daysLeft === 0 ? '⚠️ Expires TODAY' : '✅ Expires in ' + daysLeft + ' days'}
+            </p>
+            <p style="margin: 5px 0 0 0; color: #999; font-size: 12px;">${formattedDate}</p>
+          </div>
+          <button class="delete-btn" data-id="${product._id}" style="padding: 8px 15px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">Delete</button>
+        </div>
+      `;
+
+      if (daysLeft < 0) {
+        expiredProducts += productHTML;
+        hasExpired = true;
+      } else {
+        activeProducts += productHTML;
+      }
     });
 
-    // Show expired products section
+    productsList.innerHTML = activeProducts || '<p id="noProductsMsg">No active products</p>';
+
     if (hasExpired) {
-        expiredSection.style.display = 'block';
-        renderExpiredProducts();
+      expiredSection.style.display = 'block';
+      expiredList.innerHTML = expiredProducts;
     } else {
-        expiredSection.style.display = 'none';
+      expiredSection.style.display = 'none';
     }
-}
 
-// Render expired products
-function renderExpiredProducts() {
-    const products = loadProducts();
-    expiredList.innerHTML = '';
-
-    const expiredProducts = products.filter(p => getDaysUntilExpiry(p.expiryDate) < 0);
-
-    expiredProducts.forEach((product, index) => {
-        const daysExpired = Math.abs(getDaysUntilExpiry(product.expiryDate));
-        const card = document.createElement('div');
-        card.className = 'expired-card';
-        card.innerHTML = `
-            <div class="product-name" style="color: #e74c3c;">${product.name}</div>
-            <div class="product-info">
-                <span>⚠️ ${getTranslation('statusExpired')}</span>
-                <span style="color: #e74c3c; font-weight: bold;">${daysExpired} ${getTranslation('daysLeft')}</span>
-            </div>
-            <div class="product-info">
-                <span>📅 ${getTranslation('expiryDateLabel')}</span>
-                <span>${formatDate(product.expiryDate)}</span>
-            </div>
-        `;
-        expiredList.appendChild(card);
+    // Add delete listeners
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', deleteProduct);
     });
+
+  } catch (err) {
+    console.error('Error loading products:', err);
+  }
 }
 
-// Delete product
-function deleteProduct(index) {
-    if (confirm(getTranslation('deleteConfirm'))) {
-        const products = loadProducts();
-        products.splice(index, 1);
-        saveProducts(products);
-        renderProducts();
-    }
-}
+async function deleteProduct(e) {
+  const productId = e.target.dataset.id;
 
-// Add product
-productForm.addEventListener('submit', (e) => {
-    e.preventDefault();
+  if (!confirm('Are you sure you want to delete this product?')) {
+    return;
+  }
 
-    const newProduct = {
-        name: productNameInput.value,
-        expiryDate: expiryDateInput.value,
-        email: emailInput.value,
-        dateAdded: new Date().toISOString()
-    };
-
-    const products = loadProducts();
-    products.push(newProduct);
-    saveProducts(products);
-
-    // Send notification email
-    sendNotificationEmail(
-        newProduct.email,
-        `New product added: ${newProduct.name}`,
-        `Product "${newProduct.name}" will expire on ${formatDate(newProduct.expiryDate)}`
-    );
-
-    alert(getTranslation('successMessage'));
-    productForm.reset();
-    renderProducts();
-});
-
-// Language switching
-langUKBtn.addEventListener('click', () => {
-    currentLanguage = 'uk';
-    localStorage.setItem('language', 'uk');
-    updateLanguage();
-});
-
-langDEBtn.addEventListener('click', () => {
-    currentLanguage = 'de';
-    localStorage.setItem('language', 'de');
-    updateLanguage();
-});
-
-// Update all language texts
-function updateLanguage() {
-    document.getElementById('title').textContent = getTranslation('title');
-    document.getElementById('addProductTitle').textContent = getTranslation('addProductTitle');
-    document.getElementById('productsListTitle').textContent = getTranslation('productsListTitle');
-    document.getElementById('expiredTitle').textContent = getTranslation('expiredTitle');
-    document.getElementById('productNameLabel').textContent = getTranslation('productNameLabel');
-    document.getElementById('expiryDateLabel').textContent = getTranslation('expiryDateLabel');
-    document.getElementById('emailLabel').textContent = getTranslation('emailLabel');
-    document.getElementById('addBtn').textContent = getTranslation('addBtn');
-    document.getElementById('noProductsMsg').textContent = getTranslation('noProductsMsg');
-    document.getElementById('footer').textContent = getTranslation('footer');
-
-    // Update language buttons
-    langUKBtn.classList.toggle('active', currentLanguage === 'uk');
-    langDEBtn.classList.toggle('active', currentLanguage === 'de');
-
-    renderProducts();
-}
-
-// Send email notification using EmailJS
-function sendNotificationEmail(email, subject, message) {
-    emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-        to_email: email,
-        subject: subject,
-        message: message
-    }).then(
-        function(response) {
-            console.log('Email sent successfully!', response.status, response.text);
-        },
-        function(error) {
-            console.log('Failed to send email:', error);
-        }
-    );
-}
-
-// Check for expired products periodically (every hour)
-function checkExpiredProducts() {
-    const products = loadProducts();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const notifiedProducts = JSON.parse(localStorage.getItem('notifiedProducts') || '[]');
-
-    products.forEach((product, index) => {
-        const expiryDate = new Date(product.expiryDate);
-        expiryDate.setHours(0, 0, 0, 0);
-        const daysLeft = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-
-        const productKey = `${product.name}-${product.expiryDate}`;
-
-        // Send notification if product expired or expiring in 1 day (and not already notified)
-        if ((daysLeft <= 1 && daysLeft > -7) && !notifiedProducts.includes(productKey)) {
-            sendExpiryNotification(product);
-            notifiedProducts.push(productKey);
-            localStorage.setItem('notifiedProducts', JSON.stringify(notifiedProducts));
-        }
+  try {
+    const response = await fetch(`${API_URL}/api/products/${productId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${authToken}`
+      }
     });
-}
 
-function sendExpiryNotification(product) {
-    const daysLeft = getDaysUntilExpiry(product.expiryDate);
-    let subject = '';
-    let message = '';
+    const data = await response.json();
 
-    if (daysLeft < 0) {
-        subject = `⚠️ EXPIRED: ${product.name}`;
-        message = `The product "${product.name}" has EXPIRED ${Math.abs(daysLeft)} days ago on ${formatDate(product.expiryDate)}.\n\nPlease dispose of it immediately!`;
-    } else if (daysLeft === 0) {
-        subject = `⚠️ EXPIRES TODAY: ${product.name}`;
-        message = `The product "${product.name}" EXPIRES TODAY (${formatDate(product.expiryDate)})!\n\nPlease check and use it as soon as possible!`;
-    } else {
-        subject = `⏰ EXPIRING SOON: ${product.name}`;
-        message = `The product "${product.name}" will expire in ${daysLeft} day(s) on ${formatDate(product.expiryDate)}.\n\nPlease check and use it before it expires!`;
+    if (data.success) {
+      alert('✅ Product deleted');
+      loadProducts();
     }
-
-    sendNotificationEmail(product.email, subject, message);
+  } catch (err) {
+    alert('❌ Error deleting product');
+    console.error(err);
+  }
 }
 
-// Check for expired products every hour
-setInterval(checkExpiredProducts, 60 * 60 * 1000);
+// ============ LANGUAGE SWITCHER ============
 
-// Also check on page load
-checkExpiredProducts();
+function setupLanguageSwitcher() {
+  const langUK = document.getElementById('langUK');
+  const langDE = document.getElementById('langDE');
 
-// Initial render
-updateLanguage();
-renderProducts();
+  if (!langUK || !langDE) return;
+
+  langUK.addEventListener('click', () => switchLanguage('uk'));
+  langDE.addEventListener('click', () => switchLanguage('de'));
+
+  if (currentLanguage === 'de') {
+    langUK.classList.remove('active');
+    langDE.classList.add('active');
+    updateLanguage('de');
+  }
+}
+
+function switchLanguage(lang) {
+  currentLanguage = lang;
+  localStorage.setItem('language', lang);
+  updateLanguage(lang);
+
+  const langUK = document.getElementById('langUK');
+  const langDE = document.getElementById('langDE');
+  if (langUK && langDE) {
+    langUK.classList.toggle('active');
+    langDE.classList.toggle('active');
+  }
+}
+
+function updateLanguage(lang) {
+  const translations = getTranslations(lang);
+
+  Object.keys(translations).forEach(key => {
+    const element = document.getElementById(key);
+    if (element) {
+      element.textContent = translations[key];
+    }
+  });
+}
+
+function getTranslations(lang) {
+  const uk = {
+    title: 'Product Expiry Tracker',
+    addProductTitle: 'Додати товар',
+    productNameLabel: 'Назва товару:',
+    expiryDateLabel: 'Дата прострочення:',
+    addBtn: 'Додати товар',
+    productsListTitle: 'Усі товари',
+    noProductsMsg: 'Товари не додані',
+    expiredTitle: 'Прострочені товари',
+    footer: '© 2024 Product Expiry Tracker. Усі права захищені.',
+    loginTitle: 'Реєстрація / Вхід',
+    emailLabel: 'Електронна пошта:',
+    loginBtn: 'Реєстрація / Вхід',
+    loginHint: 'Просто введіть свою електронну пошту, пароль не потрібен!'
+  };
+
+  const de = {
+    title: 'Produkt-Ablaufdatum-Tracker',
+    addProductTitle: 'Produkt hinzufügen',
+    productNameLabel: 'Produktname:',
+    expiryDateLabel: 'Ablaufdatum:',
+    addBtn: 'Produkt hinzufügen',
+    productsListTitle: 'Alle Produkte',
+    noProductsMsg: 'Noch keine Produkte hinzugefügt',
+    expiredTitle: 'Abgelaufene Produkte',
+    footer: '© 2024 Produkt-Ablaufdatum-Tracker. Alle Rechte vorbehalten.',
+    loginTitle: 'Registrieren / Anmelden',
+    emailLabel: 'E-Mail:',
+    loginBtn: 'Registrieren / Anmelden',
+    loginHint: 'Geben Sie einfach Ihre E-Mail-Adresse ein, kein Passwort erforderlich!'
+  };
+
+  return lang === 'de' ? de : uk;
+}
